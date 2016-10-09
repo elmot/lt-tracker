@@ -117,7 +117,7 @@
     var xhr = new XMLHttpRequest();
     function renewMap() {
         {
-            xhr.open('GET', 'https://ilya.loggly.com/apiv2/search?q=*&from=-3d&until=now&size=1000', true);
+            xhr.open('GET', 'https://ilya.loggly.com/apiv2/search?q=*&from=-1d&until=now&size=1000', true);
             xhr.setRequestHeader("Authorization", "Basic " + btoa(userPassword));
             xhr.onreadystatechange = function (e) {
                 if (xhr.readyState == 4) {
