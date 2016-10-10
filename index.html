@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <title>Elmot Tracker Prototype</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.1/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.0.1/dist/leaflet.js"></script>
     <script>
@@ -14,19 +15,13 @@
     <style type="text/css">
         #mapid {
             position: absolute;
-            top:0;
+            top: 0;
             left: 0;
-            height: -webkit-calc(100% - 50px);
-            height: -moz-calc(100% - 50px);
-            height: calc(100% - 50px);
+            height: 100%;
             width: 100%;
+            z-index: -1;
         }
-        #controls {
-            position: absolute;
-            top: -webkit-calc(100% - 40px);
-            top: -moz-calc(100% - 40px);
-            top: calc(100% - 40px);
-        }
+
         .speedIcon {
             background-color: transparent;
             border: none;
@@ -34,46 +29,50 @@
             color: purple;
         }
 
+        .fittotrack {
+
+        }
     </style>
 </head>
 <body>
 <div id="mapid"></div>
 
-<div id="controls">
-    <button onclick="mymap.fitBounds(trackLine.getBounds())">Fit to track</button>
-
-    <select onchange="for (var i = 0; i < tilelayers.length; i++) {
-  if(this.value!=i)tilelayers[i].remove(); else tilelayers[i].addTo(mymap);
-
-}">
-        <option value="0">MapBox</option>
-        <option value="1">NatGeo_World_Map</option>
-        <option value="2">World_Imagery</option>
-    </select>
-</div>
 <script>
     var userPassword = "ilya:Aaabbb11";
 
     var trackLine = null;
+    var trackBounds = null;
     var markers = [];
 
-    var mymap = L.map('mapid').setView([60.20, 22.2], 12);
 
-    var tilelayers = [
-        L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
+    var tilelayers = {
+        "MapBox": L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
             attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="http://mapbox.com">Mapbox</a>',
             maxZoom: 18,
             id: 'mapbox.streets',
             accessToken: 'pk.eyJ1IjoiZWxtb3Q3MyIsImEiOiJjaXR1a2FwNmwwMDBoM25vYWwwcXRvemkyIn0.HKq9jC6GWS8cYTatXh82Gg'
         }),
-        L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', {
+        "NatGeo World Map": L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', {
             attribution: 'Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC',
             maxZoom: 16
         }),
-        L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        "World Imagery": L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-        })];
-    tilelayers[0].addTo(mymap);
+        })};
+
+    var mymap = L.map('mapid', {center: [60.32, 22.1 ], zoom: 12, layers: [tilelayers["World Imagery"]]});
+    L.control.layers(tilelayers).addTo(mymap);
+    var fitToTrack = L.control({position: 'topright'});
+
+    fitToTrack.onAdd = function (map) {
+        var div = L.DomUtil.create('div', 'fittotrack');
+        div.innerHTML = '<button id="fittotrack" disabled onclick="mymap.fitBounds(trackLine.getBounds())">Fit to<br/>track</button>';
+        return div;
+    };
+    fitToTrack.addTo(mymap);
+    function updateControls() {
+        fitToTrack.getContainer().getElementsByTagName("button")[0].disabled = trackBounds == null;
+    }
 </script>
 <script>
     function parseTrack(responseText) {
@@ -100,44 +99,69 @@
         if (trackLine != null) {
             trackLine.remove();
             trackLine = null;
+            trackBounds = null;
             for (var i = 0; i < markers.length; i++) {
                 markers[i].remove();
             }
         }
         if (coords.length > 0) {
             trackLine = L.polyline(coords, {color: 'orange'}).addTo(mymap);
+            trackBounds = trackLine.getBounds();
             markers = newMarkers;
             for (var i = 0; i < markers.length; i++) {
                 markers[i].addTo(mymap);
-
             }
         }
+        updateControls();
     }
 
     var xhr = new XMLHttpRequest();
+    function isLive() {
+        return ("" + document.location.search).indexOf("&until=now") >= 0;
+    }
     function renewMap() {
         {
-            xhr.open('GET', 'https://ilya.loggly.com/apiv2/search?q=*&from=-1d&until=now&size=1000', true);
-            xhr.setRequestHeader("Authorization", "Basic " + btoa(userPassword));
-            xhr.onreadystatechange = function (e) {
-                if (xhr.readyState == 4) {
-                    var stage1 = JSON.parse(xhr.responseText);
-                    xhr.open('GET', 'https://ilya.loggly.com/apiv2/events?rsid=' + stage1.rsid.id, true);
-                    xhr.setRequestHeader("Authorization", "Basic " + btoa(userPassword));
-                    xhr.onreadystatechange = function (e) {
-                        if (xhr.readyState == 4) {
-                            parseTrack(xhr.responseText);
-                            window.setTimeout(renewMap, 60000);
-                        }
-                    };
-                    xhr.send();
-                }
-            };
-            xhr.send();
+            var url;
+            var q = document.location.search + "";
+            if (q.substr(0, 6) == '?file=') {
+                url = q.substr(6)
+                xhr.open('GET', url, true);
+                xhr.onreadystatechange = function (e) {
+                    if (xhr.readyState == 4) {
+                        parseTrack(xhr.responseText);
+                    }
+                };
+                xhr.send();
+            } else {
+                var time = "&from=2016-10-09T00%3A00%3A00Z&until=2016-10-09T16%3A30%3A59Z";
+                if (q.substr(0, 1) == '?') time = q.substr(1);
+                url = 'https://ilya.loggly.com/apiv2/search?q=json.location.fix%3Ay%20AND%20json.location.lat%3A*&size=2000' + time;
+                xhr.open('GET', url, true);
+                xhr.setRequestHeader("Authorization", "Basic " + btoa(userPassword));
+                xhr.onreadystatechange = function (e) {
+                    if (xhr.readyState == 4) {
+                        var stage1 = JSON.parse(xhr.responseText);
+                        xhr.open('GET', 'https://ilya.loggly.com/apiv2/events?rsid=' + stage1.rsid.id, true);
+                        xhr.setRequestHeader("Authorization", "Basic " + btoa(userPassword));
+                        xhr.onreadystatechange = function (e) {
+                            if (xhr.readyState == 4) {
+                                parseTrack(xhr.responseText);
+                                if (isLive())window.setTimeout(renewMap, 60000);
+                            }
+                        };
+                        xhr.send();
+                    }
+                };
+                xhr.send();
+            }
         }
     }
     renewMap();
 
+
+    //todo add info pane
+    //todo incremental download in live mode
+    //todo saved files
 </script>
 </body>
 </html>
