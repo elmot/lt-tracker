@@ -32,6 +32,16 @@
         .fittotrack {
 
         }
+
+        .infopane {
+        }
+        .pane {
+            background-color: lightyellow;
+            border: solid 1px black;
+            border-radius: 5px;
+            padding: 10px;
+            line-height: 1em;
+        }
     </style>
 </head>
 <body>
@@ -65,28 +75,54 @@
     var fitToTrack = L.control({position: 'topright'});
 
     fitToTrack.onAdd = function (map) {
-        var div = L.DomUtil.create('div', 'fittotrack');
-        div.innerHTML = '<button id="fittotrack" disabled onclick="mymap.fitBounds(trackLine.getBounds())">Fit to<br/>track</button>';
+        var div = L.DomUtil.create('div', 'fittotrack pane');
+        div.innerHTML = '<button id="fittotrack" disabled onclick="mymap.fitBounds(trackLine.getBounds())">Fit to<br/>track</button>'
+                + '<hr><a href="index.html">Default</a><br>'
+                + '<a href="index.html?file=track1.json">Saved</a><br>'
+                + '<a href="index.html?&from=-1d&until=now">Live Last Day</a>';
         return div;
     };
     fitToTrack.addTo(mymap);
+
+    var infoPane = L.control({position: 'bottomright'});
+    infoPane.onAdd = function (map) {
+        var div = L.DomUtil.create('div', 'infopane pane');
+        return div;
+    };
+    infoPane.addTo(mymap);
+
+
     function updateControls() {
         fitToTrack.getContainer().getElementsByTagName("button")[0].disabled = trackBounds == null;
     }
 </script>
 <script>
+    var lastState = {};
     function parseTrack(responseText) {
+        let now = new Date();
         var track = JSON.parse(xhr.responseText);
         var coords = [];
         var newMarkers = [];
 
-        for (var i = 0; i < track.events.length; i++) {
-            var location = track.events[i].event.json.location;
+        for (let i = 0; i < track.events.length; i++) {
+            var event = track.events[i].event.json;
+            var location = event.location;
             if (location != null && location.fix != "n") {
 
                 var lat = location.lat;
                 var lon = location.lon;
                 if (lat != null && lon != null) {
+                    name = event.name;
+                    if (lastState[name] == null) {
+                        lastState[name] = {last: event};
+                    } else {
+                        if (lastState[name].last.timestamp < event.timestamp) {
+                            lastState[name].prev = lastState[name].last;
+                            lastState[name].last = event;
+                        } else if (lastState[name].prev == null || lastState[name].prev.timestamp < event.timestamp) {
+                            lastState[name].prev = event;
+                        }
+                    }
                     coords.push([lat, lon]);
                     if (coords.length % 10 == 0) {
                         var sog = Math.round(location.sog / 0.1852) / 10;
@@ -100,7 +136,7 @@
             trackLine.remove();
             trackLine = null;
             trackBounds = null;
-            for (var i = 0; i < markers.length; i++) {
+            for (let i = 0; i < markers.length; i++) {
                 markers[i].remove();
             }
         }
@@ -108,10 +144,40 @@
             trackLine = L.polyline(coords, {color: 'orange'}).addTo(mymap);
             trackBounds = trackLine.getBounds();
             markers = newMarkers;
-            for (var i = 0; i < markers.length; i++) {
+            for (let i = 0; i < markers.length; i++) {
                 markers[i].addTo(mymap);
             }
         }
+        let html = "";
+        for (name in lastState) {
+            if (!lastState.hasOwnProperty(name)) continue;
+            if (html != "")html += "<br>";
+            html += "<b>" + name + ":</b>";
+            dt = Math.round((now.getTime() - new Date(event.timestamp).getTime()) / 1000);
+            //noinspection JSUnfilteredForInLoop
+            var devInfo = lastState[name];
+            var lastEvent = devInfo.last;
+            html += "Bat: " + lastEvent.batt.level + "%; ";
+            html += "Sog: " + Math.round(lastEvent.location.sog * 10) / 10 + "km/h; ";
+            html += "\u0394T:";
+            if (dt < 120) html += dt + "s";
+            else if (dt < 120 * 60) html += Math.round(dt / 60) + "m";
+            else html += Math.round(dt / 3600) + "h";
+
+            if (dt < 300) html += "\u2714";
+            else if (dt < 600) html += "\u26A0";
+            else html += "\u271f";
+
+
+            html += "; Alt:" + Math.round(devInfo.last.location.alt);
+            if (devInfo.prev && devInfo.prev.location.alt && devInfo.last.location.alt) {
+                let dAlt = devInfo.last.location.alt - devInfo.prev.location.alt;
+                if (dAlt > 10) html += "\u2197"; else if (dAlt < -10) html += "\u2198"; else
+                    html += "-";
+            }
+            //todo last color
+        }
+        infoPane.getContainer().innerHTML = html;
         updateControls();
     }
 
@@ -124,7 +190,7 @@
             var url;
             var q = document.location.search + "";
             if (q.substr(0, 6) == '?file=') {
-                url = q.substr(6)
+                url = q.substr(6);
                 xhr.open('GET', url, true);
                 xhr.onreadystatechange = function (e) {
                     if (xhr.readyState == 4) {
@@ -159,7 +225,6 @@
     renewMap();
 
 
-    //todo add info pane
     //todo incremental download in live mode
 </script>
 </body>
