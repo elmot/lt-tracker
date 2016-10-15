@@ -192,6 +192,7 @@
             if (q.substr(0, 6) == '?file=') {
                 url = q.substr(6);
                 xhr.open('GET', url, true);
+                xhr.setRequestHeader("Authorization", "Basic " + btoa(userPassword));
                 xhr.onreadystatechange = function (e) {
                     if (xhr.readyState == 4) {
                         parseTrack(xhr.responseText);
